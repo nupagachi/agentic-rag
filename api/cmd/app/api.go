@@ -9,12 +9,12 @@ import (
 	"log/slog"
 	"net"
 
-	"agentic-rag/api/internal/platform/config"
-	"agentic-rag/api/internal/platform/db"
-	"agentic-rag/api/internal/platform/health"
-	"agentic-rag/api/internal/platform/logx"
-	"agentic-rag/api/internal/platform/redisx"
-	"agentic-rag/api/internal/platform/server"
+	"github.com/nupagachi/agentic-rag/api/internal/platform/config"
+	"github.com/nupagachi/agentic-rag/api/internal/platform/db"
+	"github.com/nupagachi/agentic-rag/api/internal/platform/health"
+	"github.com/nupagachi/agentic-rag/api/internal/platform/logx"
+	"github.com/nupagachi/agentic-rag/api/internal/platform/redisx"
+	"github.com/nupagachi/agentic-rag/api/internal/platform/server"
 )
 
 // runAPI implements "app api". Configuration errors go to stderr as plain

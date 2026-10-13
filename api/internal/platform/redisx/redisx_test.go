@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"agentic-rag/api/internal/platform/health"
-	"agentic-rag/api/internal/platform/logx"
-	"agentic-rag/api/internal/platform/redisx"
+	"github.com/nupagachi/agentic-rag/api/internal/platform/health"
+	"github.com/nupagachi/agentic-rag/api/internal/platform/logx"
+	"github.com/nupagachi/agentic-rag/api/internal/platform/redisx"
 )
 
 // Compile-time check: the client is a health.Pinger.

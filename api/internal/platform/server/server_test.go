@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"agentic-rag/api/internal/platform/health"
-	"agentic-rag/api/internal/platform/server"
+	"github.com/nupagachi/agentic-rag/api/internal/platform/health"
+	"github.com/nupagachi/agentic-rag/api/internal/platform/server"
 )
 
 func discardLogger() *slog.Logger { return slog.New(slog.DiscardHandler) }

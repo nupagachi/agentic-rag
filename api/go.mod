@@ -1,4 +1,4 @@
-module agentic-rag/api
+module github.com/nupagachi/agentic-rag/api
 
 go 1.27
 

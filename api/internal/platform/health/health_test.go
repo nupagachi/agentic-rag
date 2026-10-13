@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"agentic-rag/api/internal/platform/health"
-	"agentic-rag/api/internal/platform/logx"
+	"github.com/nupagachi/agentic-rag/api/internal/platform/health"
+	"github.com/nupagachi/agentic-rag/api/internal/platform/logx"
 )
 
 type pingerFunc func(ctx context.Context) error

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"agentic-rag/api/internal/platform/logx"
+	"github.com/nupagachi/agentic-rag/api/internal/platform/logx"
 )
 
 func TestSlogAdapter_RedactsAndStructures(t *testing.T) {

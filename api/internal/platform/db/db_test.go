@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"agentic-rag/api/internal/platform/db"
-	"agentic-rag/api/internal/platform/logx"
+	"github.com/nupagachi/agentic-rag/api/internal/platform/db"
+	"github.com/nupagachi/agentic-rag/api/internal/platform/logx"
 )
 
 func TestOpen_InvalidDSN_NoLeak(t *testing.T) {

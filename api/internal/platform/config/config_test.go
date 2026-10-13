@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"agentic-rag/api/internal/platform/config"
-	"agentic-rag/api/internal/platform/logx"
+	"github.com/nupagachi/agentic-rag/api/internal/platform/config"
+	"github.com/nupagachi/agentic-rag/api/internal/platform/logx"
 )
 
 const sentinel = "S3NTINEL"

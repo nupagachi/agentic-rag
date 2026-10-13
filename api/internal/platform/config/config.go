@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"agentic-rag/api/internal/platform/logx"
+	"github.com/nupagachi/agentic-rag/api/internal/platform/logx"
 )
 
 // Environment variable names.

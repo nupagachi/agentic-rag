@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"agentic-rag/api/internal/platform/health"
+	"github.com/nupagachi/agentic-rag/api/internal/platform/health"
 )
 
 // Middleware is a standard net/http middleware.
