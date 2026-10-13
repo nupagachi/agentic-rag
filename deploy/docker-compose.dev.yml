@@ -1,0 +1,54 @@
+# CHỈ DÙNG CHO DEV. Postgres + Redis cho máy dev; ứng dụng chạy trên host.
+# Chạy qua `make up` (đọc .env ở gốc repo). Service khác do module cần tới thêm vào.
+#
+# Ràng buộc bảo mật (được `make sec` kiểm tự động):
+#  - SR-1: mọi cổng bind 127.0.0.1 tường minh, không publish ra LAN.
+#  - SR-2: Postgres và Redis đều bắt buộc mật khẩu (không trust, có --requirepass).
+#  - SR-3: image pin tag patch cụ thể; redis >= 7.2.11 (CVE-2025-49844).
+#  - SR-20: `name` cố định để `make reset` chỉ đụng volume của project này.
+name: agentic-rag-dev
+
+services:
+  postgres:
+    image: postgres:16.15-alpine
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?thiếu POSTGRES_USER trong .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?thiếu POSTGRES_PASSWORD trong .env}
+      POSTGRES_DB: ${POSTGRES_DB:?thiếu POSTGRES_DB trong .env}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  redis:
+    image: redis:7.2.16-alpine
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?thiếu REDIS_PASSWORD trong .env}
+    # Mật khẩu đọc từ biến môi trường trong container, không nằm trên dòng lệnh tiến trình.
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\" --appendonly yes"]
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+volumes:
+  pg_data:
+  redis_data:
