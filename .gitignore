@@ -10,3 +10,35 @@ node_modules/
 __pycache__/
 .venv/
 .claude/agent-memory/
+
+# --- Go ---
+bin/
+tmp/
+*.test
+*.out
+
+# --- Python ---
+*.pyc
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- Node / Next.js ---
+dist/
+out/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# --- Chung ---
+coverage/
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Worktree của agent nằm trong .claude/
+.claude/worktrees/
