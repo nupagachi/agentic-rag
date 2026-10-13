@@ -13,13 +13,17 @@
 SHELL := bash
 .DEFAULT_GOAL := help
 
+# Đường dẫn Makefile này (đặt trước mọi include) để macro say đọc thông điệp.
+SELF := $(lastword $(MAKEFILE_LIST))
+
 PROJECT      := agentic-rag-dev
 COMPOSE_FILE := deploy/docker-compose.dev.yml
 ENV_EXAMPLE  := deploy/.env.example
 
 # $(call say,<khóa>,<đối số printf>): in thông điệp #msg:<khóa> (không tự xuống dòng).
+# Khóa không tồn tại thì thoát mã 1 (không im lặng in chuỗi rỗng).
 define say
-printf "$$(sed -n 's/^[#]msg:$(1)=//p' $(firstword $(MAKEFILE_LIST)))" $(2)
+_m=$$(sed -n 's/^[#]msg:$(1)=//p' "$(SELF)"); [ -n "$$_m" ] || { echo "missing msg key: $(1)" >&2; exit 1; }; printf "$$_m" $(2)
 endef
 
 # Lệnh docker compose cho project dev. Chọn .env nếu đã có, ngược lại dùng
@@ -49,7 +53,7 @@ env: ## Tạo .env từ deploy/.env.example nếu chưa có (không ghi đè)
 	@if [ -f .env ]; then \
 		$(call say,env_exists,); \
 	else \
-		cp $(ENV_EXAMPLE) .env && $(call say,env_created,$(ENV_EXAMPLE)); \
+		cp $(ENV_EXAMPLE) .env && chmod 600 .env && $(call say,env_created,$(ENV_EXAMPLE)); \
 	fi
 
 up: env ## Chạy Postgres 16 + Redis 7.2 (chỉ bind 127.0.0.1), chờ healthy
@@ -61,11 +65,11 @@ down: ## Dừng Postgres + Redis, giữ dữ liệu (volume)
 ps: ## Xem trạng thái Postgres + Redis
 	@$(call compose,ps)
 
-reset: ## Xóa dữ liệu dev của project này (hỏi y/N) rồi chạy lại up
+reset: env ## Xóa dữ liệu dev của project này (hỏi y/N) rồi chạy lại up
 	@$(call say,reset_ask,$(PROJECT)); \
 	read -r ans; \
 	if [ "$$ans" = "y" ] || [ "$$ans" = "Y" ]; then \
-		$(call compose,down -v) && $(MAKE) --no-print-directory up; \
+		$(call compose,down -v) && $(call compose,up -d --wait); \
 	else \
 		$(call say,reset_cancel,); \
 	fi
@@ -107,27 +111,38 @@ sec-tools:
 	@command -v docker >/dev/null 2>&1 || { $(call say,err_docker,) >&2; exit 1; }
 
 # SR-1, SR-2, SR-3: ports chỉ trên 127.0.0.1, không trust, Redis có mật khẩu, image pin patch.
+# Mọi kiểm tra chạy trên output `docker compose config` (đã bỏ comment), không grep file thô.
+# LƯU Ý: kiểm bản vá Redis chỉ chấp nhận nhánh 7.2.x (x >= 11, CVE-2025-49844). Khi nâng
+# Redis sang minor/major khác thì PHẢI sửa kiểm tra này (regex 7\.2 và ngưỡng 11) cùng lúc.
 sec-compose: sec-tools
 	@set -euo pipefail; \
 	cfg=$$(docker compose -p $(PROJECT) -f $(COMPOSE_FILE) --env-file $(ENV_EXAMPLE) config | tr -d '\r'); \
 	imgs=$$(docker compose -p $(PROJECT) -f $(COMPOSE_FILE) --env-file $(ENV_EXAMPLE) config --images | tr -d '\r'); \
 	pub=$$(printf '%s\n' "$$cfg" | awk '/^[[:space:]]+published:/ { n++ } END { print n + 0 }'); \
 	loop=$$(printf '%s\n' "$$cfg" | awk '/^[[:space:]]+host_ip: 127\.0\.0\.1$$/ { n++ } END { print n + 0 }'); \
+	for v in "$$pub" "$$loop"; do \
+		case "$$v" in ''|*[!0-9]*) $(call say,err_sr1,"$$pub" "$$loop") >&2; exit 1;; esac; \
+	done; \
 	if [ "$$pub" -lt 1 ] || [ "$$pub" -ne "$$loop" ]; then \
 		$(call say,err_sr1,"$$pub" "$$loop") >&2; exit 1; fi; \
-	if grep -qi 'HOST_AUTH_METHOD' $(COMPOSE_FILE); then \
+	if grep -qi 'HOST_AUTH_METHOD' <<< "$$cfg"; then \
 		$(call say,err_sr2_trust,$(COMPOSE_FILE)) >&2; exit 1; fi; \
-	if ! grep -q -- '--requirepass' $(COMPOSE_FILE); then \
+	if ! grep -q -- '--requirepass' <<< "$$cfg"; then \
 		$(call say,err_sr2_redis,) >&2; exit 1; fi; \
 	if [ -z "$$imgs" ]; then $(call say,err_sr3_none,) >&2; exit 1; fi; \
+	nredis=0; \
 	for img in $$imgs; do \
 		case "$$img" in *latest*) $(call say,err_sr3_latest,"$$img") >&2; exit 1;; esac; \
 		if ! printf '%s' "$$img" | grep -Eq ':[0-9]+\.[0-9]+(\.[0-9]+)?'; then \
 			$(call say,err_sr3_tag,"$$img") >&2; exit 1; fi; \
+		case "$$img" in redis:*) \
+			nredis=$$((nredis + 1)); \
+			p=$$(printf '%s' "$$img" | sed -n 's/^redis:7\.2\.\([0-9][0-9]*\)\([^0-9].*\)\{0,1\}$$/\1/p'); \
+			case "$$p" in ''|*[!0-9]*) $(call say,err_sr3_redis,) >&2; exit 1;; esac; \
+			if [ "$$p" -lt 11 ]; then $(call say,err_sr3_redis,) >&2; exit 1; fi;; \
+		esac; \
 	done; \
-	redis_patch=$$(printf '%s\n' "$$imgs" | sed -n 's/^redis:7\.2\.\([0-9][0-9]*\).*/\1/p'); \
-	if [ -z "$$redis_patch" ] || [ "$$redis_patch" -lt 11 ]; then \
-		$(call say,err_sr3_redis,) >&2; exit 1; fi; \
+	if [ "$$nredis" -lt 1 ]; then $(call say,err_sr3_redis,) >&2; exit 1; fi; \
 	$(call say,ok_compose,"$$pub")
 
 # Quét lịch sử và cây làm việc. Cây làm việc chỉ gồm file mà git thấy (đã track, hoặc chưa
