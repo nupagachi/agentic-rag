@@ -144,9 +144,21 @@ Mỗi app (`api/`, `workers/`, `web/`) tự thêm `Makefile` của mình, **khô
 | Target | Bắt buộc | Yêu cầu |
 | --- | --- | --- |
 | `check` | Có | Lint + typecheck + test của app. Trả mã khác 0 nếu có lỗi. Chạy độc lập, không cần dịch vụ Docker |
-| `dev` | Có | Chạy app với hot reload, **bind `127.0.0.1`** (vd. `next dev -H 127.0.0.1`). Đọc cấu hình từ `.env` gốc |
+| `dev` | Có | Chạy app với hot reload, **bind `127.0.0.1`** (vd. `next dev -H 127.0.0.1`). Nạp `.env` gốc theo quy ước bên dưới |
 | `sec` | Có | Quét phụ thuộc theo lockfile (`govulncheck ./...`, `uv run pip-audit`, `npm audit --audit-level=high`). Fail-closed: không nuốt mã lỗi của lệnh quét (không tiền tố `-`, không "hoặc true"), thiếu công cụ thì báo lỗi |
 | `test-integration` | Tùy chọn | Test cần Docker (testcontainers...). Chạy riêng bằng `make -C <app> test-integration`, không nằm trong `check` |
+
+**Nạp `.env` gốc.** Makefile gốc **không** export `.env` cho Makefile con. Target `dev` và `test-integration` của app tự nạp
+`.env` ở gốc repo ngay trong recipe, và báo lỗi (mã khác 0) kèm hướng dẫn chạy `make env` nếu file chưa có:
+
+```make
+dev:
+	@test -f ../.env || { echo "thieu ../.env: chay 'make env' o goc repo" >&2; exit 1; }
+	@set -a; . ../.env; set +a; exec <lệnh chạy app>
+```
+
+(`set -a; . ../.env; set +a` và lệnh chạy app phải nằm trong cùng một dòng recipe để biến môi trường có hiệu lực.
+`check` và `sec` không phụ thuộc `.env`.)
 
 Ghi chú:
 
