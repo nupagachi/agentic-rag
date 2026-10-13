@@ -61,3 +61,27 @@ async def _run_with_short_deadline(settings: object) -> int:
 
     assert isinstance(settings, Settings)
     return await run(settings, connect_timeout_s=0.5)
+
+
+@pytest.mark.parametrize(
+    "bad_url",
+    [
+        f"redis://:{SENTINEL}@127.0.0.1:1/0?socket_timeout={SENTINEL}",
+        f"redis://:{SENTINEL}@127.0.0.1:1/{SENTINEL}",
+        f"redis://:{SENTINEL}@127.0.0.1:1/0?nosuchoption={SENTINEL}",
+    ],
+)
+def test_sentinel_in_query_or_path_exits_1_with_json_only(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], bad_url: str
+) -> None:
+    monkeypatch.setenv("REDIS_URL", bad_url)
+
+    assert main([]) == 1
+
+    captured = capsys.readouterr()
+    assert SENTINEL not in captured.out + captured.err
+    lines = captured.out.splitlines()
+    assert all(isinstance(json.loads(line), dict) for line in lines)
+    record = json.loads(lines[-1])
+    assert record["msg"] == "config_invalid"
+    assert record["errors"][0]["var"] == "REDIS_URL"

@@ -14,6 +14,7 @@ from collections.abc import Callable
 from typing import Protocol
 
 from redis.asyncio import Redis
+from redis.exceptions import AuthenticationError
 
 from rag_worker.config import Settings
 from rag_worker.logging import get_logger
@@ -104,7 +105,10 @@ async def wait_for_redis(
         try:
             async with asyncio.timeout(remaining):
                 await probe.ping()
-        except Exception as exc:  # any failure means "not reachable yet"
+        except AuthenticationError as exc:  # wrong credentials: retrying cannot help
+            last_error = type(exc).__name__
+            break
+        except Exception as exc:  # any other failure means "not reachable yet"
             last_error = type(exc).__name__
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(stop.wait(), min(_RETRY_INTERVAL_S, max(remaining, 0)))
@@ -126,9 +130,15 @@ async def run(
     log = get_logger()
     stop = stop or asyncio.Event()
     restore_signals = install_signal_handlers(stop)
-    log.info("starting", config=settings.redacted())
-    probe = probe_factory(settings.redis_url.get_secret_value())
+    probe: RedisProbe | None = None
     try:
+        log.info("starting", config=settings.redacted())
+        try:
+            probe = probe_factory(settings.redis_url.get_secret_value())
+        except Exception as exc:
+            # Never log the message or traceback: they can echo parts of the URL (SR-7).
+            log.error("redis_invalid", reason=type(exc).__name__)
+            return EXIT_ERROR
         if not await wait_for_redis(probe, stop, timeout_s=connect_timeout_s):
             if stop.is_set():
                 log.info("shutdown", reason="signal_during_startup")
@@ -139,5 +149,6 @@ async def run(
         log.info("shutdown", reason="signal")
         return EXIT_OK
     finally:
-        await probe.aclose()
+        if probe is not None:
+            await probe.aclose()
         restore_signals()

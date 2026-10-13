@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 from pydantic import ValidationError
 
-from rag_worker.config import Settings, describe_errors, load_settings, mask_redis_url
+from rag_worker.config import describe_errors, load_settings, mask_redis_url
 from tests.conftest import REDIS_URL, SENTINEL
 
 
@@ -40,6 +38,13 @@ def test_missing_redis_url_names_the_variable() -> None:
         f"redis://:{SENTINEL}@127.0.0.1:notaport/0",
         f"{SENTINEL}",
         "",
+        f"redis://:{SENTINEL}@127.0.0.1:6379/0?socket_timeout={SENTINEL}",
+        f"redis://:{SENTINEL}@127.0.0.1:6379/0?db={SENTINEL}",
+        f"redis://:{SENTINEL}@127.0.0.1:6379/0?nosuchoption={SENTINEL}",
+        f"redis://:{SENTINEL}@127.0.0.1:6379/{SENTINEL}",
+        f"redis://:{SENTINEL}@127.0.0.1:6379/0/{SENTINEL}",
+        f"redis://:{SENTINEL}@127.0.0.1:6379/123",
+        f"unix://:{SENTINEL}@/tmp/redis.sock",
     ],
 )
 def test_malformed_redis_url_is_rejected_without_echoing_value(
@@ -86,13 +91,6 @@ def test_mask_redis_url_drops_credentials_and_query() -> None:
         == "rediss://cache.local:6380/2"
     )
     assert mask_redis_url("redis://[::1]:6379/0") == "redis://[::1]:6379/0"
+    assert mask_redis_url("redis://h:6379") == "redis://h:6379"
+    assert SENTINEL not in mask_redis_url(f"redis://h:6379/{SENTINEL}")
     assert SENTINEL not in mask_redis_url(f"redis://:{SENTINEL}@h:badport/0")
-
-
-def test_settings_reads_dotenv_file(tmp_path: Path) -> None:
-    env_file = tmp_path / "dotenv"
-    env_file.write_text(f"REDIS_URL={REDIS_URL}\nPOSTGRES_PASSWORD=ignored\n", encoding="utf-8")
-
-    settings = Settings(_env_file=env_file)  # type: ignore[call-arg]
-
-    assert settings.redis_url.get_secret_value() == REDIS_URL

@@ -1,4 +1,7 @@
-"""Worker configuration, read from environment variables (and ``../.env`` in dev).
+"""Worker configuration, read from environment variables only.
+
+In dev the Makefile loads the repo-root env file into the environment (``make dev``), so this
+module never reads a file by itself and cannot pick up the wrong one from another CWD.
 
 Security (SR-7): values never appear in validation errors (``hide_input_in_errors``), the
 Redis URL is a ``SecretStr`` and only a masked form may be logged.
@@ -6,43 +9,52 @@ Redis URL is a ``SecretStr`` and only a masked form may be logged.
 
 from __future__ import annotations
 
-from typing import Literal
+import re
+from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from pydantic import AliasChoices, Field, SecretStr, ValidationError, field_validator
+from pydantic import Field, SecretStr, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from redis.asyncio.connection import Connection, parse_url
 
 LogLevel = Literal["debug", "info", "warning", "error"]
 
 _REDIS_SCHEMES = frozenset({"redis", "rediss"})
+_DB_PATH = re.compile(r"/?(\d{0,2})")
+_URL_ERROR = "must be a redis:// or rediss:// URL"
 
 
 class Settings(BaseSettings):
     """Validated at startup; the process exits with code 1 when this fails."""
 
     model_config = SettingsConfigDict(
-        env_file="../.env",
-        env_file_encoding="utf-8",
-        extra="ignore",  # .env also holds variables of other apps
+        extra="ignore",  # the environment holds variables of other apps
         hide_input_in_errors=True,
         frozen=True,
     )
 
-    redis_url: SecretStr = Field(validation_alias=AliasChoices("REDIS_URL"))
-    log_level: LogLevel = Field(default="info", validation_alias=AliasChoices("WORKER_LOG_LEVEL"))
+    redis_url: SecretStr = Field(validation_alias="REDIS_URL")
+    log_level: LogLevel = Field(default="info", validation_alias="WORKER_LOG_LEVEL")
 
     @field_validator("redis_url")
     @classmethod
     def _check_redis_url(cls, value: SecretStr) -> SecretStr:
         # Static messages only: the URL contains the password and must not be echoed.
+        url = value.get_secret_value()
         try:
-            parts = urlsplit(value.get_secret_value())
-            hostname = parts.hostname
+            parts = urlsplit(url)
             _ = parts.port  # raises ValueError on a malformed port
-        except ValueError:
-            raise ValueError("must be a redis:// or rediss:// URL") from None
-        if parts.scheme not in _REDIS_SCHEMES or not hostname:
-            raise ValueError("must be a redis:// or rediss:// URL")
+            if parts.scheme not in _REDIS_SCHEMES or not parts.hostname:
+                raise ValueError(_URL_ERROR)
+            if not _DB_PATH.fullmatch(parts.path):
+                raise ValueError(_URL_ERROR)
+            # Same parsing as Redis.from_url (incl. query values); building a Connection object
+            # (no I/O) also rejects unknown query options.
+            kwargs: dict[str, Any] = dict(parse_url(url))
+            connection_class = kwargs.pop("connection_class", Connection)
+            connection_class(**kwargs)
+        except (ValueError, TypeError):
+            raise ValueError(_URL_ERROR) from None
         return value
 
     @field_validator("log_level", mode="before")
@@ -51,7 +63,7 @@ class Settings(BaseSettings):
         return value.strip().lower() if isinstance(value, str) else value
 
     def redis_target(self) -> str:
-        """Redis address without credentials, safe to log (``host:port/db``)."""
+        """Redis address without credentials, safe to log (``scheme://host:port/db``)."""
         return mask_redis_url(self.redis_url.get_secret_value())
 
     def redacted(self) -> dict[str, str]:
@@ -60,7 +72,10 @@ class Settings(BaseSettings):
 
 
 def mask_redis_url(url: str) -> str:
-    """Return ``host:port/db`` of a Redis URL, dropping user, password and query."""
+    """Return ``scheme://host:port/db`` of a Redis URL, dropping user, password and query.
+
+    Only a numeric db is echoed; anything else in the path is dropped.
+    """
     try:
         parts = urlsplit(url)
         host = parts.hostname or "?"
@@ -70,7 +85,9 @@ def mask_redis_url(url: str) -> str:
     if ":" in host:  # IPv6 literal
         host = f"[{host}]"
     scheme = parts.scheme if parts.scheme in _REDIS_SCHEMES else "?"
-    return f"{scheme}://{host}{port}{parts.path}"
+    match = _DB_PATH.fullmatch(parts.path)
+    db = f"/{match.group(1)}" if match and match.group(1) else ""
+    return f"{scheme}://{host}{port}{db}"
 
 
 def describe_errors(exc: ValidationError) -> list[dict[str, str]]:

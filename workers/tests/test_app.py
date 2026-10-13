@@ -7,6 +7,7 @@ import signal
 import sys
 
 import pytest
+from redis.exceptions import AuthenticationError
 
 from rag_worker.app import install_signal_handlers, run, wait_for_redis
 from rag_worker.config import Settings
@@ -17,7 +18,8 @@ from tests.conftest import REDIS_URL, SENTINEL
 class FakeProbe:
     """Stands in for Redis: fails ``fail_times`` times, then answers."""
 
-    def __init__(self, fail_times: int = 0, hang: bool = False) -> None:
+    def __init__(self, fail_times: int = 0, hang: bool = False, auth_error: bool = False) -> None:
+        self.auth_error = auth_error
         self.fail_times = fail_times
         self.hang = hang
         self.pings = 0
@@ -27,6 +29,8 @@ class FakeProbe:
         self.pings += 1
         if self.hang:
             await asyncio.sleep(3600)
+        if self.auth_error:
+            raise AuthenticationError(f"bad password {SENTINEL}")
         if self.pings <= self.fail_times:
             raise ConnectionError(f"cannot reach {REDIS_URL}")  # message must never be logged
 
@@ -89,11 +93,6 @@ def test_wait_loop_stops_on_signal(
     assert asyncio.run(scenario()) == 0
     assert _records(log_stream)[-1]["msg"] == "shutdown"
     assert signal.getsignal(sig) == before  # handlers restored
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="SIGBREAK is Windows only")
-def test_no_sigbreak_off_windows() -> None:
-    assert not hasattr(signal, "SIGBREAK")
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows fallback path")
@@ -162,3 +161,38 @@ def test_stop_during_connect_exits_0(
 
     assert asyncio.run(scenario()) == 0
     assert _records(log_stream)[-1]["msg"] == "shutdown"
+
+
+def test_authentication_error_is_not_retried(
+    monkeypatch: pytest.MonkeyPatch, log_stream: io.StringIO
+) -> None:
+    settings = _settings(monkeypatch)
+    probe = FakeProbe(auth_error=True)
+
+    code = asyncio.run(run(settings, probe_factory=lambda _url: probe, connect_timeout_s=5))
+
+    assert code == 1
+    assert probe.pings == 1
+    error = _records(log_stream)[-1]
+    assert error["msg"] == "redis_unavailable"
+    assert error["reason"] == "AuthenticationError"
+    assert SENTINEL not in log_stream.getvalue()
+
+
+def test_probe_factory_failure_exits_1_and_restores_signals(
+    monkeypatch: pytest.MonkeyPatch, log_stream: io.StringIO
+) -> None:
+    settings = _settings(monkeypatch)
+    before = signal.getsignal(signal.SIGINT)
+
+    def broken_factory(url: str) -> FakeProbe:
+        raise TypeError(f"unexpected keyword argument in {url}")
+
+    assert asyncio.run(run(settings, probe_factory=broken_factory)) == 1
+
+    error = _records(log_stream)[-1]
+    assert error["msg"] == "redis_invalid"
+    assert error["reason"] == "TypeError"
+    assert "exception" not in error
+    assert SENTINEL not in log_stream.getvalue()
+    assert signal.getsignal(signal.SIGINT) == before
