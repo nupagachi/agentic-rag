@@ -8,10 +8,10 @@ Dựng khung tối thiểu: bộ lệnh `make` + compose dev (Postgres, Redis), 
 ## Wave
 | Wave | Task | Owner | Area | Size | Phụ thuộc | Trạng thái | PR |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 0 | M0-T01 Khung gốc: Makefile ủy quyền, mise, compose dev, README, ADR, `make sec` | be-agent | deploy | M | — | ready | |
-| 1 | M0-T02 Khung Go API: config, log, pgx/redis, /healthz, /readyz, shutdown | be-agent | api | M | T01 | todo | |
-| 1 | M0-T03 Khung Python worker: uv, config, log, signal, ping Redis | be-agent | workers | S | T01 | todo | |
-| 1 | M0-T04 Khung Next.js: Next 15, Tailwind 4 token, shadcn, next-intl, theme, lint, Vitest | fe-agent | web | M | T01 | todo | |
+| 0 | M0-T01 Khung gốc: Makefile ủy quyền, mise, compose dev, README, ADR, `make sec` | be-agent | deploy | M | — | merged | local ff 99e11af |
+| 1 | M0-T02 Khung Go API: config, log, pgx/redis, /healthz, /readyz, shutdown | be-agent | api | M | T01 | ready | |
+| 1 | M0-T03 Khung Python worker: uv, config, log, signal, ping Redis | be-agent | workers | S | T01 | ready | |
+| 1 | M0-T04 Khung Next.js: Next 15, Tailwind 4 token, shadcn, next-intl, theme, lint, Vitest | fe-agent | web | M | T01 | ready | |
 | 2 | M0-T05 Middleware Go: request id, access log, recover, CORS | be-agent | api | S | T02 | todo | |
 | 2 | M0-T06 Vỏ app + trang chủ trạng thái API | fe-agent | web | M | T04 | todo | |
 | 2 | M0-T07 Test tích hợp: /readyz + worker với Postgres/Redis thật | test-agent | api, workers (thư mục test) | S | T02, T03 | todo | |
@@ -72,6 +72,11 @@ T01 ─┬─> T02 ─┬─> T05
 6. SPEC còn để `owner: "@<owner>"`; frontmatter `scope_note` ghi "mục 3" nhưng nguyên tắc nằm ở mục 2 (lỗi nhỏ, Owner sửa khi duyệt).
 
 ## Nhật ký
+- 2026-10-13 Owner yêu cầu orchestrator tự merge: M0-T01 fast-forward vào main local (99e11af), không push. T02, T03, T04 → ready.
+- 2026-10-13 M0-T01 vòng 2: review-agent APPROVE (1 nit), security-agent PASS (2 Low, 2 Info). Status in-review, chờ Owner merge local (chưa có PR). Tổng token: be-agent 175k, review 62k+32k, security 39k+41k. Tổng wave 0 ≈ 390k token.
+- 2026-10-13 M0-T01 review vòng 1: review-agent REQUEST_CHANGES (1 major: kiểm SR-2 trong make sec grep cả comment; 4 minor, 2 nit), security-agent PASS (3 Low, 1 Info). Gửi lại be-agent sửa vòng 1/2; chốt hợp đồng nạp .env cho Makefile con.
+- 2026-10-13 M0-T01 xong (5 commit, +580, 148k token, 66 tool call, ~11 phút). Cổng: make help/check/sec rc=0, diff đúng scope. Đang review tự động.
+- 2026-10-13 Commit đầu 733d9c0 (local, bỏ .claude/agent-memory/). Wave 0: giao M0-T01 cho be-agent, branch chore/M0-T01-repo-skeleton từ local main.
 - 2026-10-13 Owner duyệt plan; câu 3–6 theo mặc định. Chế độ chạy: local, chưa PR (chưa có remote/gh).
 - 2026-10-13 Owner chốt Go mới nhất (1.27.2) thay cho 1.23; cập nhật T01, T02.
 - 2026-10-13 Lập plan. Threat model: 20 SR (7 High, 10 Medium, 3 Low), đã gắn vào task. Bỏ bước Explore vì repo chưa có code.
