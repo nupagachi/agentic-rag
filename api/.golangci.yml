@@ -1,0 +1,49 @@
+# golangci-lint v2 (version pinned in ../mise.toml and api/Makefile).
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  # standard = errcheck, govet, ineffassign, staticcheck, unused
+  default: standard
+  enable:
+    - gosec          # SR-19: security checks
+    - bodyclose      # SR-19: HTTP response bodies are closed
+    - noctx          # SR-19: HTTP requests carry a context
+    - contextcheck
+    - errorlint
+    - revive
+    - sqlclosecheck
+  settings:
+    errcheck:
+      check-type-assertions: true
+    gosec:
+      excludes: []
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: error-return
+        - name: error-naming
+        - name: unused-parameter
+        - name: var-naming
+        - name: indent-error-flow
+        - name: context-as-argument
+  exclusions:
+    presets:
+      - std-error-handling
+    rules:
+      # Tests may use fixed local ports and ignore Close errors on throwaway values.
+      - path: _test\.go
+        linters:
+          - gosec
+
+formatters:
+  enable:
+    - gofmt
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
