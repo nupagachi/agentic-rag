@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+deploy/secrets/
+*.pem
+.claude/settings.local.json
+.claude/agent-memory-local/
+node_modules/
+.next/
+__pycache__/
+.venv/
+.claude/agent-memory/
