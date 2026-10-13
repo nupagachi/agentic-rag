@@ -1,0 +1,9 @@
+# Cấu hình gitleaks cho `make sec`: dùng bộ luật mặc định.
+# Hiện KHÔNG có allowlist nào: deploy/.env.example chỉ chứa giá trị dev giả
+# (dev_only_change_me) và gitleaks không báo. Nếu sau này cần ngoại lệ thì (SR-17)
+# chỉ allowlist đúng đường dẫn deploy/.env.example, không allowlist toàn cục theo luật
+# hay theo thư mục, và nêu lý do trong PR.
+title = "agentic-rag gitleaks"
+
+[extend]
+useDefault = true
