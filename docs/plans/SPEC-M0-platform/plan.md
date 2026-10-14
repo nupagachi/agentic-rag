@@ -9,12 +9,12 @@ Dựng khung tối thiểu: bộ lệnh `make` + compose dev (Postgres, Redis), 
 | Wave | Task | Owner | Area | Size | Phụ thuộc | Trạng thái | PR |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 0 | M0-T01 Khung gốc: Makefile ủy quyền, mise, compose dev, README, ADR, `make sec` | be-agent | deploy | M | — | merged | local ff 99e11af |
-| 1 | M0-T02 Khung Go API: config, log, pgx/redis, /healthz, /readyz, shutdown | be-agent | api | M | T01 | ready | |
-| 1 | M0-T03 Khung Python worker: uv, config, log, signal, ping Redis | be-agent | workers | S | T01 | ready | |
-| 1 | M0-T04 Khung Next.js: Next 15, Tailwind 4 token, shadcn, next-intl, theme, lint, Vitest | fe-agent | web | M | T01 | ready | |
-| 2 | M0-T05 Middleware Go: request id, access log, recover, CORS | be-agent | api | S | T02 | todo | |
-| 2 | M0-T06 Vỏ app + trang chủ trạng thái API | fe-agent | web | M | T04 | todo | |
-| 2 | M0-T07 Test tích hợp: /readyz + worker với Postgres/Redis thật | test-agent | api, workers (thư mục test) | S | T02, T03 | todo | |
+| 1 | M0-T02 Khung Go API: config, log, pgx/redis, /healthz, /readyz, shutdown | be-agent | api | M | T01 | merged | local ff 389df81 |
+| 1 | M0-T03 Khung Python worker: uv, config, log, signal, ping Redis | be-agent | workers | S | T01 | merged | local ff 5149698 |
+| 1 | M0-T04 Khung Next.js: Next 15, Tailwind 4 token, shadcn, next-intl, theme, lint, Vitest | fe-agent | web | M | T01 | merged | local ff d61b94a |
+| 2 | M0-T05 Middleware Go: request id, access log, recover, CORS | be-agent | api | S | T02 | ready | |
+| 2 | M0-T06 Vỏ app + trang chủ trạng thái API | fe-agent | web | M | T04 | ready | |
+| 2 | M0-T07 Test tích hợp: /readyz + worker với Postgres/Redis thật | test-agent | api, workers (thư mục test) | S | T02, T03 | ready | |
 
 Kiểm `scope.paths` không giao nhau trong cùng wave:
 - Wave 1: `api/**` (T02, trừ `httpx/`) · `workers/**` (T03) · `web/**` trừ `(app)/`, `app-shell/` (T04).
@@ -72,6 +72,17 @@ T01 ─┬─> T02 ─┬─> T05
 6. SPEC còn để `owner: "@<owner>"`; frontmatter `scope_note` ghi "mục 3" nhưng nguyên tắc nằm ở mục 2 (lỗi nhỏ, Owner sửa khi duyệt).
 
 ## Nhật ký
+- 2026-10-14 Wave 1 xong. M0-T04 vòng 1 (3 commit) và M0-T02 vòng 2 (6 commit): cổng check + sec rc=0, đúng scope; không re-review vì không có blocker/major. Rebase lên main rồi ff: T04 → d61b94a, T02 → 389df81. T05, T06, T07 → ready. Lưu ý môi trường: autocrlf làm api/go.mod, go.sum ra CRLF → `go mod tidy -diff` fail (đề xuất .gitattributes eol=lf); máy không có cgo nên chưa chạy -race.
+- 2026-10-14 M0-T02 review lại (biên bản vòng 1 mất): review-agent APPROVE (6 minor gồm 2 ở WIP, 3 nit), security PASS (3 Low: WriteTimeout, URL có fragment lộ một phần mật khẩu, Secret trong field unexported; 4 Info). WIP secret.go lưu patch ở scratchpad. Gỡ worktree cũ T02 + T04 vì agent mới bị cô lập worktree, không vào được branch đang bị giữ (memory agent đã chuyển về .claude/agent-memory). Giao lại song song: fe-agent T04 vòng 1/2, be-agent T02 vòng 2/2. Chờ Owner: ngưỡng che mật khẩu ngắn, exit 1 khi quá timeout shutdown.
+- 2026-10-14 M0-T04 review: review-agent APPROVE (3 minor, 2 nit), security PASS (1 Medium: dep thừa `cn`; 2 Low, 2 Info). Gửi fe-agent sửa vòng 1/2: gỡ `cn`, closeLabel cho Sheet, `make dev` chỉ export NEXT_PUBLIC_API_URL, `npm test -- --run`. Hoãn: cookie Secure (chờ Nginx), giữ exactOptionalPropertyTypes.
+- 2026-10-14 Tiếp tục sau khi phiên bị ngắt. M0-T04 xong 4 commit (aac426f, +12.2k gồm lockfile); cổng check-web rc=0, sec rc=0, đúng scope → in-review. M0-T02 vòng sửa 1 dở (bb03ca2 module path + secret.go chưa commit); biên bản review vòng 1 mất → chạy lại review + security để lấy danh sách. make dùng tạm từ thư mục Temp (không có trong PATH).
+- 2026-10-13 M0-T02 security PASS (3 Low, 4 Info). Gửi sửa vòng 1/2: module path github.com/nupagachi/agentic-rag/api + 3 Low + 5 minor + 1 nit.
+- 2026-10-13 Owner cho phép tự merge mọi task xong review vào main. M0-T03 merged (ff 5149698). M0-T04 chấp nhận sec hai bước + deps radix-ui, tw-animate-css, @eslint/*. M0-T02 review: REQUEST_CHANGES (1 major module path tạm, 5 minor, 2 nit).
+- 2026-10-13 M0-T03 sửa xong (5149698, tổng 154k token): Medium SR-7 đã sửa, orchestrator kiểm 3 URL sentinel → rc=1, JSON, không lộ; check-workers 35 pass. Không chạy re-review vì không có blocker/major. Status in-review.
+- 2026-10-13 M0-T02 xong (3 commit, +2196 ≈ 975 code + 1180 test — vượt xa size M; 144k token, 71 tool call, ~20 phút). Cổng: check-api rc=0, sec no vulns, đúng scope. Nâng x/text v0.41.0 (vuln). Đang review.
+- 2026-10-13 M0-T03 review: review-agent APPROVE (2 minor, 3 nit), security PASS (1 Medium: REDIS_URL query sai → traceback thô; 1 Low, 2 Info). Gửi 1 lượt sửa nhỏ (Medium + minor/nit).
+- 2026-10-13 M0-T03 xong (3 commit, +757 không tính lock — vượt size S; 126k token, 74 tool call, ~14 phút). Cổng: check-workers 24 pass, sec rc=0, đúng scope. Lệch AC5: dev chạy watchfiles dạng hàm (lý do Windows). Đang review.
+- 2026-10-13 Wave 1: giao T02 (be), T03 (be), T04 (fe) song song từ main 1838342. T07 không chạy sớm vì trùng scope api/Makefile, workers/Makefile. Mặc định: Makefile app in thông điệp ASCII tiếng Anh; chấp nhận pin Node 22.23.3, Python 3.12.15, uv 0.13.0.
 - 2026-10-13 Owner yêu cầu orchestrator tự merge: M0-T01 fast-forward vào main local (99e11af), không push. T02, T03, T04 → ready.
 - 2026-10-13 M0-T01 vòng 2: review-agent APPROVE (1 nit), security-agent PASS (2 Low, 2 Info). Status in-review, chờ Owner merge local (chưa có PR). Tổng token: be-agent 175k, review 62k+32k, security 39k+41k. Tổng wave 0 ≈ 390k token.
 - 2026-10-13 M0-T01 review vòng 1: review-agent REQUEST_CHANGES (1 major: kiểm SR-2 trong make sec grep cả comment; 4 minor, 2 nit), security-agent PASS (3 Low, 1 Info). Gửi lại be-agent sửa vòng 1/2; chốt hợp đồng nạp .env cho Makefile con.
