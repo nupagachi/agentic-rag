@@ -112,3 +112,86 @@ func TestRecover_ErrAbortHandler_Repanics(t *testing.T) {
 		t.Error("ErrAbortHandler must not be logged as a recovered panic")
 	}
 }
+
+// A panic after the response started cannot become a clean 500: Recover must
+// not append a body and must abort the connection, while the access log still
+// records the request.
+func TestRecover_ResponseStarted_AbortsWithoutBody(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		handler    http.HandlerFunc
+		wantBody   string
+		wantStatus int
+	}{
+		{"partial body", func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte("partial"))
+			panic("mid-body")
+		}, "partial", http.StatusOK},
+		{"header only", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusAccepted)
+			panic("after header")
+		}, "", http.StatusAccepted},
+		{"flushed", func(w http.ResponseWriter, _ *http.Request) {
+			_ = http.NewResponseController(w).Flush()
+			panic("after flush")
+		}, "", http.StatusOK},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			log, buf := jsonLogger()
+			r := chi.NewRouter()
+			r.Use(httpx.RequestID(log), httpx.AccessLog(log), httpx.Recover(log))
+			r.Get("/x", tt.handler)
+
+			rec := httptest.NewRecorder()
+			var got any
+			func() {
+				defer func() { got = recover() }()
+				r.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/x", nil))
+			}()
+
+			if err, ok := got.(error); !ok || !errors.Is(err, http.ErrAbortHandler) {
+				t.Fatalf("recovered %v, want http.ErrAbortHandler", got)
+			}
+			if rec.Body.String() != tt.wantBody || strings.Contains(rec.Body.String(), "INTERNAL") {
+				t.Errorf("body = %q, want %q", rec.Body.String(), tt.wantBody)
+			}
+			if rec.Code != tt.wantStatus {
+				t.Errorf("status = %d, want %d", rec.Code, tt.wantStatus)
+			}
+
+			var errLine, accessLine map[string]any
+			for _, l := range decodeLines(t, buf.String()) {
+				switch l["msg"] {
+				case "panic recovered":
+					errLine = l
+				case "request":
+					accessLine = l
+				}
+			}
+			if errLine == nil || errLine["level"] != "ERROR" || errLine["response_started"] != true {
+				t.Errorf("error log = %v", errLine)
+			}
+			if st, _ := errLine["stack"].(string); !strings.Contains(st, "recover_test.go") {
+				t.Errorf("stack missing: %v", errLine["stack"])
+			}
+			if accessLine == nil || accessLine["route"] != "/x" || accessLine["status"] != float64(tt.wantStatus) {
+				t.Errorf("access log = %v", accessLine)
+			}
+		})
+	}
+}
+
+// Before the response starts, the 500 body is exactly the fixed shape.
+func TestRecover_BodyExactShape(t *testing.T) {
+	t.Parallel()
+
+	r, _ := recoverRouter(t, "x")
+	rec := get(t, r, "/boom", map[string]string{httpx.HeaderRequestID: "rid-shape"})
+	if want := `{"code":"INTERNAL","requestId":"rid-shape"}`; rec.Body.String() != want {
+		t.Errorf("body = %q, want %q", rec.Body.String(), want)
+	}
+}
