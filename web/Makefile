@@ -7,12 +7,14 @@ check: ## Lint + typecheck + unit tests + production build (no .env needed)
 	npm ci --no-fund --no-audit
 	npm run lint
 	npm run typecheck
-	npx vitest run
+	npm test -- --run
 	npm run build
 
-dev: ## Run Next.js dev server on 127.0.0.1:3000 (loads ../.env)
+dev: ## Run Next.js dev server on 127.0.0.1:3000 (reads only NEXT_PUBLIC_API_URL from ../.env)
 	@test -f ../.env || { echo "missing ../.env: run 'make env' at the repo root" >&2; exit 1; }
-	@set -a; . ../.env; set +a; exec npm run dev
+	@NEXT_PUBLIC_API_URL="$$(sed -n 's/^NEXT_PUBLIC_API_URL=//p' ../.env | tail -n1 | tr -d '\r')"; \
+	if [ -n "$$NEXT_PUBLIC_API_URL" ]; then export NEXT_PUBLIC_API_URL; else unset NEXT_PUBLIC_API_URL; fi; \
+	exec npm run dev
 
 # Runtime dependencies: fail on high or critical (what ships to users).
 # Full tree incl. dev tools: fail on critical only, because eslint-config-next ->
