@@ -11,12 +11,9 @@ import (
 //
 // RequestID is first so every later layer, including panics and short-circuited
 // preflights, has a request id. AccessLog wraps Recover so it records the 500
-// that Recover writes. An empty corsOrigins falls back to the local web dev
-// origins (httpx.DefaultDevOrigins).
+// that Recover writes. corsOrigins comes from config, which owns the default;
+// an empty list grants no cross-origin access.
 func Middlewares(log *slog.Logger, corsOrigins []string) []Middleware {
-	if len(corsOrigins) == 0 {
-		corsOrigins = httpx.DefaultDevOrigins
-	}
 	return []Middleware{
 		httpx.RequestID(log),
 		httpx.AccessLog(log),

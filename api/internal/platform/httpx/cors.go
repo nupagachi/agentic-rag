@@ -6,10 +6,6 @@ import (
 	"strings"
 )
 
-// DefaultDevOrigins is the allowlist used when CORS_ALLOWED_ORIGINS is empty
-// (the local web dev server).
-var DefaultDevOrigins = []string{"http://localhost:3000", "http://127.0.0.1:3000"}
-
 const (
 	corsAllowMethods = "GET, HEAD, OPTIONS"
 	corsAllowHeaders = "Content-Type, Authorization, X-Request-ID"
@@ -25,6 +21,9 @@ const (
 //     no CORS grant until a later task needs them and the threat model is
 //     updated.
 //   - Vary: Origin is always set so caches do not mix per-origin answers.
+//
+// An empty allowlist grants nothing. The default allowlist lives in config
+// (config.DefaultCORSOrigins), not here.
 //
 // A preflight (OPTIONS with Origin and Access-Control-Request-Method) is
 // answered here with 204 and never reaches the router.

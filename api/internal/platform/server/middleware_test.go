@@ -16,6 +16,9 @@ import (
 	"github.com/nupagachi/agentic-rag/api/internal/platform/server"
 )
 
+// devOrigins mirrors the config default; the server package no longer owns one.
+var devOrigins = []string{"http://localhost:3000", "http://127.0.0.1:3000"}
+
 func jsonLog() (*slog.Logger, *bytes.Buffer) {
 	var buf bytes.Buffer
 	return slog.New(slog.NewJSONHandler(&buf, nil)), &buf
@@ -45,7 +48,7 @@ func TestMiddlewares_OrderAndWiring(t *testing.T) {
 
 	log, buf := jsonLog()
 	probes := health.NewChecker(nil, time.Second)
-	r := server.NewRouter(server.Options{Middlewares: server.Middlewares(log, nil)}, probes)
+	r := server.NewRouter(server.Options{Middlewares: server.Middlewares(log, devOrigins)}, probes)
 	r.Get("/boom", func(http.ResponseWriter, *http.Request) { panic("boom") })
 
 	t.Run("probe with default dev origin", func(t *testing.T) {
@@ -103,7 +106,7 @@ func TestMiddlewares_OrderAndWiring(t *testing.T) {
 	})
 }
 
-func TestMiddlewares_ConfiguredOriginsReplaceDefaults(t *testing.T) {
+func TestMiddlewares_OnlyConfiguredOriginsAllowed(t *testing.T) {
 	t.Parallel()
 
 	log, _ := jsonLog()
@@ -122,6 +125,25 @@ func TestMiddlewares_ConfiguredOriginsReplaceDefaults(t *testing.T) {
 		if got := rec.Header().Get("Access-Control-Allow-Origin"); got != want {
 			t.Errorf("origin %q: Allow-Origin = %q, want %q", origin, got, want)
 		}
+	}
+}
+
+// An empty list (not what config produces, but possible for a direct caller)
+// grants no cross-origin access: there is no hidden fallback (SR-12).
+func TestMiddlewares_EmptyOriginsGrantNothing(t *testing.T) {
+	t.Parallel()
+
+	log, _ := jsonLog()
+	r := chi.NewRouter()
+	r.Use(server.Middlewares(log, nil)...)
+	r.Get("/x", func(http.ResponseWriter, *http.Request) {})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/x", nil)
+	req.Header.Set("Origin", "http://localhost:3000")
+	r.ServeHTTP(rec, req)
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Errorf("Allow-Origin = %q, want empty", got)
 	}
 }
 
