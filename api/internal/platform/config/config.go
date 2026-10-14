@@ -187,7 +187,9 @@ func parseOrigins(raw string) ([]string, string) {
 			(u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
 			return nil, "each origin must look like scheme://host[:port]"
 		}
-		out = append(out, u.Scheme+"://"+u.Host)
+		// Browsers send the origin lower-cased and the CORS middleware matches
+		// exactly, so normalise the host here.
+		out = append(out, u.Scheme+"://"+strings.ToLower(u.Host))
 	}
 	return out, ""
 }

@@ -160,6 +160,7 @@ func TestConfig_CORSOrigins(t *testing.T) {
 		{"empty uses default", "", wantDefaultOrigins, false},
 		{"blank entries use default", " , ,", wantDefaultOrigins, false},
 		{"trims and skips blanks", " http://a.example , ,https://b.example:8443/ ", []string{"http://a.example", "https://b.example:8443"}, false},
+		{"host lower-cased", "HTTP://LocalHost:3000", []string{"http://localhost:3000"}, false},
 		{"path rejected", "http://a.example/app", nil, true},
 		{"no scheme rejected", "a.example", nil, true},
 		{"ftp rejected", "ftp://a.example", nil, true},
