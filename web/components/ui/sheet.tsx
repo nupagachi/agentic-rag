@@ -43,16 +43,24 @@ function SheetOverlay({
   )
 }
 
+// The close button needs a translated accessible name, so it is opt-in and the
+// caller must pass `closeLabel` (e.g. t("common.actions.close")) with it.
+type SheetCloseButtonProps =
+  | { showCloseButton?: false; closeLabel?: never }
+  | { showCloseButton: true; closeLabel: string }
+
+type SheetContentProps = React.ComponentProps<typeof SheetPrimitive.Content> & {
+  side?: "top" | "right" | "bottom" | "left"
+} & SheetCloseButtonProps
+
 function SheetContent({
   className,
   children,
   side = "right",
-  showCloseButton = true,
+  showCloseButton = false,
+  closeLabel,
   ...props
-}: React.ComponentProps<typeof SheetPrimitive.Content> & {
-  side?: "top" | "right" | "bottom" | "left"
-  showCloseButton?: boolean
-}) {
+}: SheetContentProps) {
   return (
     <SheetPortal>
       <SheetOverlay />
@@ -76,7 +84,7 @@ function SheetContent({
         {showCloseButton && (
           <SheetPrimitive.Close className="absolute top-4 right-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-secondary">
             <XIcon className="size-4" />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">{closeLabel}</span>
           </SheetPrimitive.Close>
         )}
       </SheetPrimitive.Content>
