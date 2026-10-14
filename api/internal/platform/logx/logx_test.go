@@ -29,6 +29,12 @@ func TestSecret_NeverPrintsValue(t *testing.T) {
 		"%#v":        fmt.Sprintf("%#v", s),
 		"Sprint":     fmt.Sprint(s),
 		"%q":         fmt.Sprintf("%q", s),
+		"%s":         fmt.Sprintf("%s", s), //nolint:gosimple,staticcheck,perfsprint // exercising the verb on purpose
+		"%d":         fmt.Sprintf("%d", s),
+		"%x":         fmt.Sprintf("%x", s),
+		"%08s":       fmt.Sprintf("%08s", s),
+		"struct %d":  fmt.Sprintf("%d", h),
+		"struct %x":  fmt.Sprintf("%x", h),
 		"struct %v":  fmt.Sprintf("%v", h),
 		"struct %+v": fmt.Sprintf("%+v", h),
 		"struct %#v": fmt.Sprintf("%#v", h),
@@ -135,6 +141,50 @@ func TestRedactor_ScrubsDriverErrors(t *testing.T) {
 
 	if got := (*logx.Redactor)(nil).Redact("x"); got != "x" {
 		t.Fatalf("nil redactor must be a no-op, got %q", got)
+	}
+}
+
+func TestRedactor_PasswordForms(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		dsn       string
+		in        string
+		forbidden []string
+	}{
+		{
+			name:      "lowercase percent-encoding as written",
+			dsn:       "postgres://app:S3N%2ftINEL@127.0.0.1:5432/app",
+			in:        "failed to connect to postgres://app:S3N%2ftINEL@127.0.0.1:5432/app; password S3N%2ftINEL rejected",
+			forbidden: []string{"S3N%2ftINEL", "%2ft"},
+		},
+		{
+			name:      "lowercase percent-encoding decoded",
+			dsn:       "postgres://app:S3N%2ftINEL@127.0.0.1:5432/app",
+			in:        "password S3N/tINEL rejected",
+			forbidden: []string{"S3N/tINEL"},
+		},
+		{
+			name:      "at sign in password as written",
+			dsn:       "postgres://app:S3N@TINEL@127.0.0.1:5432/app",
+			in:        "bad credentials S3N@TINEL for app; url postgres://app:S3N@TINEL@127.0.0.1:5432/app",
+			forbidden: []string{"S3N@TINEL", "TINEL"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := logx.NewRedactor(logx.NewSecret(tt.dsn)).Redact(tt.in)
+			for _, f := range tt.forbidden {
+				if strings.Contains(got, f) {
+					t.Fatalf("Redact(%q) = %q still contains %q", tt.in, got, f)
+				}
+			}
+			if !strings.Contains(got, logx.Mask) {
+				t.Fatalf("Redact(%q) = %q has no mask", tt.in, got)
+			}
+		})
 	}
 }
 
