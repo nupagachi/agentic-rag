@@ -16,7 +16,7 @@ AIR           ?= go run github.com/air-verse/air@v$(AIR_VERSION)
 # The race detector needs cgo (a C compiler). Use it when available (CI, Linux).
 RACE := $(if $(filter 1,$(shell go env CGO_ENABLED)),-race,)
 
-.PHONY: check dev sec
+.PHONY: check dev sec test-integration
 
 check:
 	@echo "api: gofmt"
@@ -38,3 +38,13 @@ dev:
 sec:
 	@echo "api: govulncheck"
 	@$(GOVULNCHECK) ./...
+
+# Integration tests (build tag "integration") against the dev stack from `make up`.
+# They are not part of `check`. Loads ../.env when present; tests that need the
+# stack skip with a reason when it is not running. Set INTEGRATION_REQUIRE_STACK=1
+# to fail instead of skip. -v prints the skip reasons.
+test-integration:
+	@echo "api: integration tests (stack from 'make up', settings from ../.env)"
+	@if [ -f ../.env ]; then set -a; . ../.env; set +a; fi; \
+	go vet -tags=integration ./test/integration/... && \
+	go test -tags=integration -count=1 -v ./test/integration/...
