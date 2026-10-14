@@ -26,6 +26,11 @@ const (
 // DefaultAPIAddr is loopback only; exposing the API is an explicit decision (SR-4).
 const DefaultAPIAddr = "127.0.0.1:8080"
 
+// DefaultCORSOrigins is used when CORS_ALLOWED_ORIGINS is unset or blank: only
+// the local web dev server (SR-12). Config is the single source of this
+// default; the CORS middleware treats an empty list as "grant nothing".
+const DefaultCORSOrigins = "http://localhost:3000,http://127.0.0.1:3000"
+
 // Config is the validated API configuration.
 type Config struct {
 	APIAddr            string
@@ -95,6 +100,11 @@ func Load(getenv func(string) string) (Config, error) {
 	origins, reason := parseOrigins(getenv(EnvCORSOrigins))
 	if reason != "" {
 		bad(EnvCORSOrigins, reason)
+	}
+	if reason == "" && len(origins) == 0 {
+		// Unset or blank: the local web dev server, same as deploy/.env.example.
+		// parseOrigins on the constant cannot fail (covered by a test).
+		origins, _ = parseOrigins(DefaultCORSOrigins)
 	}
 	cfg.CORSAllowedOrigins = origins
 

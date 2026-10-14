@@ -117,6 +117,37 @@ func TestConfig_CORSWildcard_Rejected(t *testing.T) {
 	}
 }
 
+var wantDefaultOrigins = []string{"http://localhost:3000", "http://127.0.0.1:3000"}
+
+// TestConfig_CORSOrigins_UnsetUsesDefault: config is the single source of the
+// CORS default (SR-12); it matches deploy/.env.example.
+func TestConfig_CORSOrigins_UnsetUsesDefault(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := config.Load(lookup(with(func(m map[string]string) { delete(m, "CORS_ALLOWED_ORIGINS") })))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !reflect.DeepEqual(cfg.CORSAllowedOrigins, wantDefaultOrigins) {
+		t.Fatalf("origins = %v, want %v", cfg.CORSAllowedOrigins, wantDefaultOrigins)
+	}
+	for _, o := range cfg.CORSAllowedOrigins {
+		if strings.Contains(o, "*") || o == "null" {
+			t.Errorf("default origin %q must be exact", o)
+		}
+	}
+}
+
+// An invalid value must not silently fall back to the default.
+func TestConfig_CORSOrigins_InvalidDoesNotFallBack(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := config.Load(lookup(with(func(m map[string]string) { m["CORS_ALLOWED_ORIGINS"] = "a.example" })))
+	if err == nil {
+		t.Fatalf("accepted, origins = %v", cfg.CORSAllowedOrigins)
+	}
+}
+
 func TestConfig_CORSOrigins(t *testing.T) {
 	t.Parallel()
 
@@ -126,7 +157,8 @@ func TestConfig_CORSOrigins(t *testing.T) {
 		want    []string
 		wantErr bool
 	}{
-		{"empty is allowed", "", nil, false},
+		{"empty uses default", "", wantDefaultOrigins, false},
+		{"blank entries use default", " , ,", wantDefaultOrigins, false},
 		{"trims and skips blanks", " http://a.example , ,https://b.example:8443/ ", []string{"http://a.example", "https://b.example:8443"}, false},
 		{"path rejected", "http://a.example/app", nil, true},
 		{"no scheme rejected", "a.example", nil, true},
