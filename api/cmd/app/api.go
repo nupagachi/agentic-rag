@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"net"
 
+	"github.com/redis/go-redis/v9"
+
 	"github.com/nupagachi/agentic-rag/api/internal/platform/config"
 	"github.com/nupagachi/agentic-rag/api/internal/platform/db"
 	"github.com/nupagachi/agentic-rag/api/internal/platform/health"
@@ -44,6 +46,10 @@ func runAPI(ctx context.Context, args []string, getenv func(string) string, stdo
 	log := logx.New(stdout, cfg.LogLevel, logx.NewRedactor(cfg.DatabaseURL, cfg.RedisURL))
 	log.Info("starting", slog.Any("config", cfg))
 
+	// go-redis logs through a process-wide global; route it to the redacting
+	// logger here, once, instead of from inside a constructor.
+	redis.SetLogger(redisx.NewLogger(log))
+
 	lc := net.ListenConfig{}
 	ln, err := lc.Listen(ctx, "tcp", cfg.APIAddr)
 	if err != nil {
@@ -69,7 +75,7 @@ func serveAPI(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.L
 	}
 	defer pool.Close()
 
-	rdb, err := redisx.Open(cfg.RedisURL, log)
+	rdb, err := redisx.Open(cfg.RedisURL)
 	if err != nil {
 		_ = ln.Close()
 		return err
@@ -82,7 +88,7 @@ func serveAPI(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.L
 
 	probes := health.NewChecker(log, health.DefaultTimeout,
 		health.Check{Name: health.Postgres, Pinger: pool},
-		health.Check{Name: health.Redis, Pinger: rdb},
+		health.Check{Name: health.Redis, Pinger: redisx.NewPinger(rdb)},
 	)
 	router := server.NewRouter(server.Options{}, probes)
 	srv := server.New(cfg.APIAddr, router, log)
