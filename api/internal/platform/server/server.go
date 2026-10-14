@@ -10,11 +10,13 @@ import (
 	"time"
 )
 
-// Server limits (SR-13). There is no WriteTimeout on purpose: SSE responses
-// (M-later) are long-lived; handlers bound their own work with contexts.
+// Server limits (SR-13). WriteTimeout bounds slow-read clients. Long-lived
+// responses (SSE, later) must lift it for their own connection with
+// http.NewResponseController(w).SetWriteDeadline; do not raise it globally.
 const (
 	ReadHeaderTimeout = 5 * time.Second
 	ReadTimeout       = 30 * time.Second
+	WriteTimeout      = 30 * time.Second
 	IdleTimeout       = 60 * time.Second
 	MaxHeaderBytes    = 32 << 10 // 32 KiB
 	ShutdownTimeout   = 10 * time.Second
@@ -28,6 +30,7 @@ func New(addr string, h http.Handler, log *slog.Logger) *http.Server {
 		Handler:           h,
 		ReadHeaderTimeout: ReadHeaderTimeout,
 		ReadTimeout:       ReadTimeout,
+		WriteTimeout:      WriteTimeout,
 		IdleTimeout:       IdleTimeout,
 		MaxHeaderBytes:    MaxHeaderBytes,
 		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelWarn),

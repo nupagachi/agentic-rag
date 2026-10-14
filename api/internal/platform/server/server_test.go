@@ -32,6 +32,9 @@ func TestNewServer_Timeouts(t *testing.T) {
 	if srv.ReadTimeout <= 0 {
 		t.Errorf("ReadTimeout = %v, want > 0", srv.ReadTimeout)
 	}
+	if srv.WriteTimeout <= 0 || srv.WriteTimeout > time.Minute {
+		t.Errorf("WriteTimeout = %v, want (0, 1m]", srv.WriteTimeout)
+	}
 	if srv.IdleTimeout <= 0 {
 		t.Errorf("IdleTimeout = %v, want > 0", srv.IdleTimeout)
 	}
@@ -123,9 +126,10 @@ func TestServe_GracefulShutdown_FinishesInflight(t *testing.T) {
 	t.Parallel()
 
 	inHandler := make(chan struct{})
+	release := make(chan struct{})
 	h := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		close(inHandler)
-		time.Sleep(200 * time.Millisecond)
+		<-release // the test lets the handler finish only once shutdown has begun
 		_, _ = io.WriteString(w, "done")
 	})
 	ln := listen(t)
@@ -148,6 +152,23 @@ func TestServe_GracefulShutdown_FinishesInflight(t *testing.T) {
 
 	<-inHandler
 	cancel() // simulate SIGTERM while the request is in flight
+
+	// Shutdown closes the listener first: once dials fail, shutdown has begun
+	// while the request is still blocked in the handler.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		c, err := (&net.Dialer{Timeout: 200 * time.Millisecond}).DialContext(t.Context(), "tcp", ln.Addr().String())
+		if err != nil {
+			break
+		}
+		_ = c.Close()
+		if time.Now().After(deadline) {
+			close(release)
+			t.Fatal("server kept accepting connections after cancel")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	close(release)
 
 	r := <-got
 	if r.err != nil || r.body != "done" {
