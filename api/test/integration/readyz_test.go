@@ -26,8 +26,8 @@ func TestReadyz_ReturnsOKWhenStackIsHealthy(t *testing.T) {
 		t.Fatalf(`body = %q, want {"status":"ok"}`, body)
 	}
 
-	out := p.stop()
-	assertNoSecrets(t, "process output", out, passwordOf(s.databaseURL), passwordOf(s.redisURL))
+	out := p.stop(t)
+	assertNoSecrets(t, "process output", out, append(passwordsOf(s.databaseURL), passwordsOf(s.redisURL)...)...)
 }
 
 // AC2 + SR-8: Postgres on a dead port is reported by name only, quickly.
@@ -54,8 +54,8 @@ func TestReadyz_PostgresDownReturns503NamingOnlyPostgres(t *testing.T) {
 	}
 	assertBodyHasNoConnectionDetails(t, body)
 
-	out := p.stop()
-	assertNoSecrets(t, "process output", out, sentinel, passwordOf(s.redisURL))
+	out := p.stop(t)
+	assertNoSecrets(t, "process output", out, append(passwordsOf(s.redisURL), sentinel)...)
 }
 
 // SR-8: both dependencies on dead ports. Needs no stack, so it always runs.
@@ -64,7 +64,9 @@ func TestReadyz_AllDependenciesDownReturns503WithNamesOnly(t *testing.T) {
 	deadRedis := "redis://:" + sentinel + "@" + deadAddr + "/0"
 	p := startAPI(t, deadDB, deadRedis)
 
+	began := time.Now()
 	status, body, err := p.get("/readyz")
+	elapsed := time.Since(began)
 	if err != nil {
 		t.Fatalf("GET /readyz: %v", err)
 	}
@@ -76,9 +78,12 @@ func TestReadyz_AllDependenciesDownReturns503WithNamesOnly(t *testing.T) {
 	if want := []string{"postgres", "redis"}; !reflect.DeepEqual(got.Failing, want) {
 		t.Errorf("failing = %v, want %v", got.Failing, want)
 	}
+	if elapsed > 1500*time.Millisecond {
+		t.Errorf("/readyz took %s, want <= 1.5s", elapsed)
+	}
 	assertBodyHasNoConnectionDetails(t, body)
 
-	out := p.stop()
+	out := p.stop(t)
 	assertNoSecrets(t, "process output", out, sentinel)
 }
 
@@ -102,6 +107,6 @@ func TestReadyz_WrongRedisPasswordReturns503NamingOnlyRedis(t *testing.T) {
 	}
 	assertBodyHasNoConnectionDetails(t, body)
 
-	out := p.stop()
-	assertNoSecrets(t, "process output", out, "wrong-"+sentinel, passwordOf(s.redisURL), passwordOf(s.databaseURL))
+	out := p.stop(t)
+	assertNoSecrets(t, "process output", out, append(append(passwordsOf(s.redisURL), passwordsOf(s.databaseURL)...), "wrong-"+sentinel)...)
 }
