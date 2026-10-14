@@ -90,7 +90,9 @@ func serveAPI(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.L
 		health.Check{Name: health.Postgres, Pinger: pool},
 		health.Check{Name: health.Redis, Pinger: redisx.NewPinger(rdb)},
 	)
-	router := server.NewRouter(server.Options{}, probes)
+	router := server.NewRouter(server.Options{
+		Middlewares: server.Middlewares(log, cfg.CORSAllowedOrigins),
+	}, probes)
 	srv := server.New(cfg.APIAddr, router, log)
 
 	log.Info("listening", slog.String("addr", ln.Addr().String()))
