@@ -5,7 +5,7 @@
 SHELL := bash
 .DEFAULT_GOAL := check
 
-.PHONY: check dev sec
+.PHONY: check dev sec test-integration
 
 # Lint + typecheck + unit tests. Needs no Docker and no .env.
 check:
@@ -26,3 +26,11 @@ dev:
 sec:
 	uv sync --frozen
 	uv run --frozen pip-audit
+
+# Integration tests against the dev stack from `make up`. Not part of `check`.
+# Loads ../.env when present; tests that need Redis skip with a reason when it is not
+# running (set INTEGRATION_REQUIRE_STACK=1 to fail instead). -rs lists the skip reasons.
+test-integration:
+	@echo "workers: integration tests (stack from 'make up', settings from ../.env)"
+	@if [ -f ../.env ]; then set -a; . ../.env; set +a; fi; \
+	uv sync --frozen && uv run --frozen pytest -m integration -rs tests/integration
