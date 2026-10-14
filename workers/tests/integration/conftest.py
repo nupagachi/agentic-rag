@@ -8,12 +8,15 @@ from tests.integration.harness import Worker
 
 
 @pytest.fixture
-def start_worker() -> Iterator[Callable[[str], Worker]]:
-    """Start ``python -m rag_worker`` with a given REDIS_URL; always killed at teardown."""
+def start_worker() -> Iterator[Callable[..., Worker]]:
+    """Start ``python -m rag_worker`` with a given REDIS_URL; always killed at teardown.
+
+    Extra positional arguments are passwords to mask in failure messages.
+    """
     started: list[Worker] = []
 
-    def start(redis_url: str) -> Worker:
-        worker = Worker(redis_url)
+    def start(redis_url: str, *secrets: str) -> Worker:
+        worker = Worker(redis_url, *secrets)
         started.append(worker)
         return worker
 

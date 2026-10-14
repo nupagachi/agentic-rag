@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import re
 import signal
 import socket
 import subprocess
@@ -21,7 +22,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 import pytest
 
@@ -67,8 +68,28 @@ def require_redis() -> str:
     return REAL_REDIS_URL
 
 
-def password_of(url: str) -> str:
-    return urlsplit(url).password or ""
+def passwords_of(url: str) -> list[str]:
+    """Password of a URL in both forms it can take in output: as written (percent-encoded)
+    and decoded. Empty list when there is none.
+    """
+    encoded = urlsplit(url).password or ""  # urlsplit does not decode the userinfo
+    if not encoded:
+        return []
+    decoded = unquote(encoded)
+    return [encoded] if decoded == encoded else [encoded, decoded]
+
+
+_USERINFO = re.compile(r"://[^/\s@]*@")
+
+
+def redact(text: str, *secrets: str) -> str:
+    """Make text safe to print in a failure: known secrets become ``***`` and any userinfo in
+    a URL (``://user:pass@``) becomes ``://***@``.
+    """
+    for secret in secrets:
+        if secret:
+            text = text.replace(secret, "***")
+    return _USERINFO.sub("://***@", text)
 
 
 def with_password(url: str, password: str) -> str:
@@ -86,7 +107,9 @@ def with_password(url: str, password: str) -> str:
 class Worker:
     """A running ``python -m rag_worker`` subprocess with its output captured."""
 
-    def __init__(self, redis_url: str) -> None:
+    def __init__(self, redis_url: str, *secrets: str) -> None:
+        # Passwords that must never be printed by a failing test.
+        self._secrets = [*passwords_of(redis_url), *secrets]
         env = {k: v for k, v in os.environ.items() if k not in {"REDIS_URL", "WORKER_LOG_LEVEL"}}
         env["REDIS_URL"] = redis_url
         env["PYTHONUNBUFFERED"] = "1"
@@ -155,6 +178,10 @@ class Worker:
             if line is not None:
                 self.lines.append(line)
         return "\n".join(self.lines)
+
+    def printable_output(self) -> str:
+        """``output()`` with known passwords and URL credentials masked, for failure messages."""
+        return redact(self.output(), *self._secrets)
 
     def close(self) -> None:
         if self._proc.poll() is None:
