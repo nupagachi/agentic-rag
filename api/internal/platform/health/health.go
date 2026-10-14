@@ -5,6 +5,7 @@ package health
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -80,10 +81,14 @@ func (c *Checker) Failing(ctx context.Context) []Dependency {
 			answered[r.idx] = true
 			if r.err != nil {
 				failed[r.idx] = true
+				name := slog.String("dependency", string(c.checks[r.idx].Name))
+				if errors.Is(r.err, context.DeadlineExceeded) {
+					// A Pinger that honors ctx reports the timeout as its error.
+					c.log.Warn("readiness check timed out", name)
+					continue
+				}
 				// The logger redacts known secrets; the response body never sees err.
-				c.log.Warn("readiness check failed",
-					slog.String("dependency", string(c.checks[r.idx].Name)),
-					slog.Any("error", r.err))
+				c.log.Warn("readiness check failed", name, slog.Any("error", r.err))
 			}
 		case <-ctx.Done():
 			pending = 0 // stop waiting; unanswered checks count as failed
@@ -92,6 +97,10 @@ func (c *Checker) Failing(ctx context.Context) []Dependency {
 
 	var out []Dependency
 	for i, chk := range c.checks {
+		if !answered[i] {
+			// A Pinger that ignores ctx never answered before the deadline.
+			c.log.Warn("readiness check timed out", slog.String("dependency", string(chk.Name)))
+		}
 		if failed[i] || !answered[i] {
 			out = append(out, chk.Name)
 		}

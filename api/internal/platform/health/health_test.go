@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -82,22 +83,84 @@ func TestChecker_Failing(t *testing.T) {
 func TestChecker_RunsInParallel(t *testing.T) {
 	t.Parallel()
 
-	slow := pingerFunc(func(ctx context.Context) error {
+	// Each pinger announces that it started, then waits for the other one to
+	// start. That can only complete if both run at the same time; if the
+	// checks ran one after another the first would wait until the checker's
+	// timeout and be reported as failing.
+	var (
+		mu      sync.Mutex
+		started int
+		both    = make(chan struct{})
+	)
+	barrier := pingerFunc(func(ctx context.Context) error {
+		mu.Lock()
+		started++
+		if started == 2 {
+			close(both)
+		}
+		mu.Unlock()
 		select {
-		case <-time.After(150 * time.Millisecond):
+		case <-both:
 			return nil
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 	})
-	c := newChecker(time.Second, slow, slow)
+	c := newChecker(5*time.Second, barrier, barrier)
 
-	start := time.Now()
 	if got := c.Failing(context.Background()); len(got) != 0 {
-		t.Fatalf("Failing = %v, want none", got)
+		t.Fatalf("checks did not run in parallel; failing = %v", got)
 	}
-	if elapsed := time.Since(start); elapsed >= 280*time.Millisecond {
-		t.Fatalf("checks ran sequentially: %v", elapsed)
+}
+
+func TestChecker_LogsTimeouts(t *testing.T) {
+	t.Parallel()
+
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	ignoresCtx := pingerFunc(func(context.Context) error {
+		<-release
+		return nil
+	})
+
+	tests := []struct {
+		name string
+		pg   health.Pinger
+		rd   health.Pinger
+		want string // dependency expected in the timeout log
+	}{
+		{"pinger ignores ctx", ignoresCtx, ok(), "postgres"},
+		{"pinger honors ctx", ok(), blockUntilCtx(), "redis"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var buf bytes.Buffer
+			c := health.NewChecker(logx.New(&buf, slog.LevelInfo, nil), 50*time.Millisecond,
+				health.Check{Name: health.Postgres, Pinger: tt.pg},
+				health.Check{Name: health.Redis, Pinger: tt.rd},
+			)
+			if got := c.Failing(context.Background()); len(got) != 1 || string(got[0]) != tt.want {
+				t.Fatalf("Failing = %v, want [%s]", got, tt.want)
+			}
+
+			var timeouts []map[string]any
+			for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+				var rec map[string]any
+				if err := json.Unmarshal([]byte(line), &rec); err != nil {
+					t.Fatalf("log line is not JSON: %q", line)
+				}
+				if rec["msg"] == "readiness check timed out" {
+					timeouts = append(timeouts, rec)
+				}
+			}
+			if len(timeouts) != 1 {
+				t.Fatalf("want exactly one timeout log, got %d: %s", len(timeouts), buf.String())
+			}
+			if timeouts[0]["level"] != "WARN" || timeouts[0]["dependency"] != tt.want {
+				t.Fatalf("timeout log = %v, want WARN for %s", timeouts[0], tt.want)
+			}
+		})
 	}
 }
 
