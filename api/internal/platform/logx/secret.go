@@ -17,15 +17,24 @@ const Mask = "***"
 // fmt.Formatter, so every fmt verb (including unusual ones such as %d, %x or
 // %08s) prints Mask, and slog.LogValuer and encoding.TextMarshaler, so slog and
 // encoding/json print Mask too. The raw value is only reachable through Reveal.
+//
+// The value lives behind a pointer on purpose: fmt cannot call methods on a
+// Secret stored in an unexported struct field, so it prints the field's
+// underlying kind. For a pointer that is an address, never the string.
 type Secret struct {
-	v string
+	p *string
 }
 
 // NewSecret wraps v.
-func NewSecret(v string) Secret { return Secret{v: v} }
+func NewSecret(v string) Secret { return Secret{p: &v} }
 
 // Reveal returns the raw value. Callers must never log or format it.
-func (s Secret) Reveal() string { return s.v }
+func (s Secret) Reveal() string {
+	if s.p == nil {
+		return ""
+	}
+	return *s.p
+}
 
 // Format implements fmt.Formatter. It ignores the verb and flags so that no
 // fmt path, not even the bad-verb branch, can reach the raw value.
@@ -57,9 +66,12 @@ var sensitiveQueryKeys = map[string]struct{}{
 // entirely so that a malformed secret is never echoed.
 func RedactURL(raw string) string {
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme == "" {
+	if err != nil || u.Scheme == "" || u.Opaque != "" {
 		return Mask
 	}
+	// A fragment is never part of a valid DSN, but it is where an unescaped
+	// "#" in a password ends up; never print it.
+	u.Fragment, u.RawFragment = "", ""
 	if u.User != nil {
 		if _, ok := u.User.Password(); ok {
 			u.User = url.UserPassword(u.User.Username(), Mask)
@@ -82,14 +94,15 @@ func RedactURL(raw string) string {
 // a secret: the whole value plus, for URLs, the password exactly as written in
 // the URL and in its decoded and re-encoded forms.
 func (s Secret) needles() []string {
-	if s.v == "" {
+	v := s.Reveal()
+	if v == "" {
 		return nil
 	}
-	out := []string{s.v}
-	if raw := rawUserinfoPassword(s.v); raw != "" {
+	out := []string{v}
+	if raw := rawUserinfoPassword(v); raw != "" {
 		out = append(out, raw)
 	}
-	u, err := url.Parse(s.v)
+	u, err := url.Parse(v)
 	if err != nil {
 		return out
 	}

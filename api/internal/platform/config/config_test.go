@@ -192,6 +192,48 @@ func TestConfig_MissingOrInvalid_NamesVarNotValue(t *testing.T) {
 	}
 }
 
+// A "#" inside a password starts the URL fragment and silently turns the rest
+// of the password into the host. It must be rejected, naming the variable and
+// the fix but never echoing any part of the value.
+func TestConfig_URLFragmentOrOpaque_Rejected(t *testing.T) {
+	t.Parallel()
+
+	const frag = "W0RDFRAG"
+	tests := []struct {
+		name string
+		env  string
+		val  string
+		leak []string
+	}{
+		{"database fragment", "DATABASE_URL", "postgres://u:p@" + sentinel + "#" + frag + "@host/db", []string{sentinel, frag}},
+		{"database literal example", "DATABASE_URL", "postgres://u:p@ss#word@host/db", []string{"p@ss", "ss#word", "#word"}},
+		{"database trailing fragment", "DATABASE_URL", "postgres://u:" + sentinel + "@host/db#" + frag, []string{sentinel, frag}},
+		{"database opaque", "DATABASE_URL", "postgres:u:" + sentinel + "@host/db", []string{sentinel}},
+		{"redis fragment", "REDIS_URL", "redis://:p@" + sentinel + "#" + frag + "@host/0", []string{sentinel, frag}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := config.Load(lookup(with(func(m map[string]string) { m[tt.env] = tt.val })))
+			if err == nil {
+				t.Fatal("want error")
+			}
+			if got := problemVars(t, err); !reflect.DeepEqual(got, []string{tt.env}) {
+				t.Fatalf("problem vars = %v, want [%s]", got, tt.env)
+			}
+			msg := err.Error()
+			if !strings.Contains(msg, tt.env) || !strings.Contains(msg, "percent-encoded") {
+				t.Fatalf("message %q must name %s and say to percent-encode", msg, tt.env)
+			}
+			for _, l := range tt.leak {
+				if strings.Contains(msg, l) {
+					t.Fatalf("message %q leaks %q", msg, l)
+				}
+			}
+		})
+	}
+}
+
 func TestConfig_SecretsMaskedEverywhere(t *testing.T) {
 	t.Parallel()
 

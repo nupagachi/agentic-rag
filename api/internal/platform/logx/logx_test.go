@@ -57,6 +57,37 @@ func TestSecret_NeverPrintsValue(t *testing.T) {
 	}
 }
 
+// fmt cannot call methods on a value reached through an unexported field, so
+// the Secret type itself must hold nothing printable.
+func TestSecret_InUnexportedField_NeverPrintsValue(t *testing.T) {
+	t.Parallel()
+
+	type holder struct {
+		dsn  logx.Secret
+		list []logx.Secret
+		m    map[string]logx.Secret
+	}
+	h := holder{
+		dsn:  logx.NewSecret(sentinel),
+		list: []logx.Secret{logx.NewSecret(sentinel)},
+		m:    map[string]logx.Secret{"k": logx.NewSecret(sentinel)},
+	}
+
+	for _, format := range []string{"%v", "%+v", "%#v", "%s", "%d", "%x", "%q"} {
+		for name, arg := range map[string]any{"value": h, "pointer": &h} {
+			if got := fmt.Sprintf(format, arg); strings.Contains(got, sentinel) {
+				t.Errorf("%s of %s with unexported Secret leaks: %s", format, name, got)
+			}
+		}
+	}
+	if h.dsn.Reveal() != sentinel {
+		t.Fatalf("Reveal() = %q, want raw value", h.dsn.Reveal())
+	}
+	if got := (logx.Secret{}).Reveal(); got != "" {
+		t.Fatalf("zero Secret Reveal() = %q, want empty", got)
+	}
+}
+
 func TestSecret_JSONAndSlog(t *testing.T) {
 	t.Parallel()
 
@@ -97,6 +128,9 @@ func TestRedactURL(t *testing.T) {
 		{"redis empty user", "redis://:S3NTINEL@127.0.0.1:6379/0", "redis://:***@127.0.0.1:6379/0"},
 		{"no password", "postgres://app@127.0.0.1:5432/app", "postgres://app@127.0.0.1:5432/app"},
 		{"password query", "postgres://app@127.0.0.1/app?password=S3NTINEL&sslmode=disable", "postgres://app@127.0.0.1/app?password=***&sslmode=disable"},
+		{"fragment dropped", "postgres://app:S3NTINEL@127.0.0.1:5432/app#W0RDFRAG", "postgres://app:***@127.0.0.1:5432/app"},
+		{"fragment from # in password", "postgres://app:p@127.0.0.1#S3NTINEL@host/app", "postgres://app:***@127.0.0.1"},
+		{"opaque", "postgres:app:S3NTINEL@127.0.0.1/app", logx.Mask},
 		{"not a url", "S3NTINEL", logx.Mask},
 		{"unparseable", "postgres://app:S3NTINEL@host:notaport/db", logx.Mask},
 		{"empty", "", logx.Mask},

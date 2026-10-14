@@ -144,6 +144,11 @@ func validateURL(raw string, schemes ...string) string {
 	if err != nil {
 		return "is not a valid URL"
 	}
+	// A fragment or an opaque part almost always means a password with an
+	// unescaped "#" (or similar), which would silently change the host.
+	if u.Fragment != "" || u.Opaque != "" {
+		return "must not contain a fragment or opaque part; special characters in password must be percent-encoded"
+	}
 	for _, s := range schemes {
 		if u.Scheme == s {
 			if u.Hostname() == "" {
