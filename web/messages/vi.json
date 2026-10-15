@@ -1,0 +1,42 @@
+{
+  "common": {
+    "appName": "Agentic RAG",
+    "loading": "Đang tải...",
+    "save": "Lưu",
+    "cancel": "Hủy",
+    "comingSoon": "Đang phát triển"
+  },
+  "nav": {
+    "chat": "Chat",
+    "knowledgeBases": "Knowledge Base",
+    "settings": "Cài đặt",
+    "usage": "Chi phí"
+  },
+  "settings": {
+    "profile": "Hồ sơ",
+    "members": "Thành viên",
+    "models": "Cấu hình Model",
+    "knowledgeBase": "Knowledge Base",
+    "quota": "Quota & chi phí",
+    "audit": "Audit log"
+  },
+  "auth": {
+    "login": "Đăng nhập",
+    "register": "Đăng ký",
+    "forgotPassword": "Quên mật khẩu",
+    "acceptInvite": "Chấp nhận lời mời",
+    "email": "Email",
+    "password": "Mật khẩu",
+    "submitLogin": "Đăng nhập",
+    "loginFailed": "Email hoặc mật khẩu không đúng"
+  },
+  "validation": {
+    "required": "Bắt buộc nhập",
+    "email": "Email không hợp lệ",
+    "passwordMin": "Mật khẩu tối thiểu {min} ký tự"
+  },
+  "errors": {
+    "network": "Không kết nối được máy chủ",
+    "unknown": "Đã có lỗi xảy ra"
+  }
+}

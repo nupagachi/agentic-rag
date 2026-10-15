@@ -1,0 +1,42 @@
+{
+  "common": {
+    "appName": "Agentic RAG",
+    "loading": "Loading...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "comingSoon": "Coming soon"
+  },
+  "nav": {
+    "chat": "Chat",
+    "knowledgeBases": "Knowledge Bases",
+    "settings": "Settings",
+    "usage": "Usage"
+  },
+  "settings": {
+    "profile": "Profile",
+    "members": "Members",
+    "models": "Model configuration",
+    "knowledgeBase": "Knowledge Base",
+    "quota": "Quota & cost",
+    "audit": "Audit log"
+  },
+  "auth": {
+    "login": "Sign in",
+    "register": "Sign up",
+    "forgotPassword": "Forgot password",
+    "acceptInvite": "Accept invitation",
+    "email": "Email",
+    "password": "Password",
+    "submitLogin": "Sign in",
+    "loginFailed": "Incorrect email or password"
+  },
+  "validation": {
+    "required": "Required",
+    "email": "Invalid email",
+    "passwordMin": "Password must be at least {min} characters"
+  },
+  "errors": {
+    "network": "Cannot reach the server",
+    "unknown": "Something went wrong"
+  }
+}
