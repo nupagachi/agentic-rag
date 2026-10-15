@@ -34,7 +34,7 @@ Nền móng cho mọi module: môi trường chạy được từ ngày đầu, 
 
 | Mã | Task | Stack | Phụ thuộc |
 | --- | --- | --- | --- |
-| M0-01 | Cấu trúc monorepo: `web/` (Next.js), `api/` (Go), `workers/` (Python), `deploy/`, `docs/`; quy ước code, lint | Tất cả | — |
+| M0-01 | Cấu trúc monorepo: `web/` (Next.js), `server/` (Go), `contracts/`, `workers/` (Python), `deployment/`, `docs/`; quy ước code, lint | Tất cả | — |
 | M0-02 | Docker Compose dev: Postgres, Redis, Qdrant, MinIO, mock LLM provider (OpenAI-compatible) để dev không tốn tiền API | DevOps | M0-01 |
 | M0-03 | Khung Go API: router, config, logging JSON, error format chuẩn, health/readiness, graceful shutdown | Go | M0-01 |
 | M0-04 | Khung Python worker: consumer Redis Streams (consumer group, ack, retry, DLQ), config, logging | Python | M0-02 |

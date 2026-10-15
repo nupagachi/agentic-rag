@@ -59,14 +59,14 @@ Model đề xuất để đưa vào Eval (chưa chốt; kiểm tra bản mới h
 
 ## 3. Cấu trúc code
 
-Một monorepo, 3 ứng dụng (`web`, `api`, `workers`) dùng chung thư mục `contracts` để không lệch định dạng dữ liệu giữa Go, Python và TypeScript. Đặc tả tokenizer BM25 và bộ test vector cũng nằm trong `contracts` để Go và Python cho cùng kết quả.
+Một monorepo, 3 ứng dụng (`web`, `server`, `workers`) dùng chung thư mục `contracts` để không lệch định dạng dữ liệu giữa Go, Python và TypeScript. Đặc tả tokenizer BM25 và bộ test vector cũng nằm trong `contracts` để Go và Python cho cùng kết quả.
 
 **Monorepo**
 
 ```
 agentic-rag/
 ├── web/                     # Next.js
-├── api/                     # Go: API, agent, model gateway, scheduler, eval-runner
+├── server/                  # Go: API, agent, model gateway, scheduler, eval-runner
 ├── workers/                 # Python: crawl, parse, chunk, embed, eval
 ├── contracts/
 │   ├── openapi.yaml         # API REST → sinh client TS và type Go
@@ -75,9 +75,9 @@ agentic-rag/
 │   ├── events/*.schema.json # Sự kiện SSE
 │   ├── errors.yaml          # danh mục mã lỗi dùng chung (vi/en)
 │   └── bm25/                # đặc tả tokenizer + test_vectors.json
-├── deploy/
+├── deployment/
 │   ├── docker-compose.yml
-│   ├── docker-compose.dev.yml
+│   ├── docker-compose.dev.yaml
 │   ├── .env.example
 │   ├── nginx/nginx.conf
 │   ├── squid/squid.conf     # egress proxy: allowlist domain provider
@@ -87,10 +87,10 @@ agentic-rag/
 └── Makefile                 # make dev | test | gen | migrate | up
 ```
 
-**Go API** (`api/`): chia theo domain, mỗi domain có `handler.go → service.go → repo.go`; domain gọi nhau qua interface của service.
+**Go API** (`server/`): chia theo domain, mỗi domain có `handler.go → service.go → repo.go`; domain gọi nhau qua interface của service.
 
 ```
-api/
+server/
 ├── cmd/app/main.go          # app api | scheduler | eval-runner | migrate
 ├── internal/
 │   ├── platform/            # config, log, db, redis, qdrant, minio, otel, httpx
@@ -447,7 +447,7 @@ File `.env` và thư mục `secrets/` không commit; quyền file 600, chỉ use
 
 ### 5.3 Dockerfile
 
-**Go API** (`api/Dockerfile`): build tĩnh, image distroless không có shell.
+**Go API** (`server/Dockerfile`): build tĩnh, image distroless không có shell.
 
 ```dockerfile
 FROM golang:1.27 AS build
@@ -500,7 +500,7 @@ EXPOSE 3000
 CMD ["node", "server.js"]
 ```
 
-**Egress proxy** (`deploy/squid/squid.conf`): cổng 3128 chỉ cho domain của provider đang dùng, cổng 3129 cho crawl. Danh sách domain provider nên được sinh từ Settings mỗi khi thêm provider.
+**Egress proxy** (`deployment/squid/squid.conf`): cổng 3128 chỉ cho domain của provider đang dùng, cổng 3129 cho crawl. Danh sách domain provider nên được sinh từ Settings mỗi khi thêm provider.
 
 ```
 http_port 3128
@@ -560,7 +560,7 @@ server {
 | Tăng worker khi hàng đợi dài | `docker compose up -d --scale worker-parse=4 --no-recreate` |
 | Nâng cấp phiên bản | Đổi `APP_VERSION` → `docker compose pull` → migrate → `docker compose up -d` |
 | Xem log | `docker compose logs -f api worker-parse squid` |
-| Dev trên 1 máy | `make dev` (= `docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile app --profile data --profile obs up`, dùng mock provider) |
+| Dev trên 1 máy | `make dev` (= `docker compose -f docker-compose.yml -f docker-compose.dev.yaml --profile app --profile data --profile obs up`, dùng mock provider) |
 
 **Sao lưu** (cron trên server dữ liệu, đẩy sang máy backup riêng): `pg_dump` hằng ngày + WAL archive (WAL-G) cho Postgres; API snapshot của Qdrant hằng ngày; `mc mirror` cho MinIO. Redis không cần backup riêng: job mất sẽ được scheduler đẩy lại từ trạng thái trong Postgres.
 
