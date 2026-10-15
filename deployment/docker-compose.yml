@@ -1,0 +1,87 @@
+# Kho dữ liệu: Postgres, Redis, Qdrant, MinIO
+#   cp .env.example .env    # điền mật khẩu
+#   docker compose up -d
+name: agentic-rag
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: rag
+      POSTGRES_USER: rag
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?đặt POSTGRES_PASSWORD trong .env}
+    command:
+      - postgres
+      - -c
+      - max_connections=300
+      - -c
+      - shared_buffers=${PG_SHARED_BUFFERS:-256MB}
+    ports: ["${DATA_BIND_IP:-127.0.0.1}:5432:5432"]
+    volumes: [pg-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag -d rag"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [backend]
+
+  redis:
+    image: redis:7.2-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - ${REDIS_PASSWORD:?đặt REDIS_PASSWORD trong .env}
+      - --maxmemory-policy
+      - noeviction
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    ports: ["${DATA_BIND_IP:-127.0.0.1}:6379:6379"]
+    volumes: [redis-data:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [backend]
+
+  qdrant:
+    image: qdrant/qdrant:v1.11.0
+    restart: unless-stopped
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?đặt QDRANT_API_KEY trong .env}
+    ports:
+      - "${DATA_BIND_IP:-127.0.0.1}:6333:6333"   # REST
+      - "${DATA_BIND_IP:-127.0.0.1}:6334:6334"   # gRPC
+    volumes: [qdrant-data:/qdrant/storage]
+    networks: [backend]
+
+  minio:
+    image: minio/minio:${MINIO_TAG:?đặt MINIO_TAG trong .env}
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?đặt MINIO_ROOT_USER trong .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?đặt MINIO_ROOT_PASSWORD trong .env}
+    ports:
+      - "${DATA_BIND_IP:-127.0.0.1}:9000:9000"   # S3 API
+      - "${DATA_BIND_IP:-127.0.0.1}:9001:9001"   # console
+    volumes: [minio-data:/data]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [backend]
+
+networks:
+  backend: {}
+
+volumes:
+  pg-data: {}
+  redis-data: {}
+  qdrant-data: {}
+  minio-data: {}
