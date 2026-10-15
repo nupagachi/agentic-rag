@@ -1,0 +1,253 @@
+openapi: 3.0.3
+info:
+  title: Agentic RAG API
+  version: 0.1.0
+  description: |
+    API REST của Go server. File này là **nguồn sự thật** (contract-first):
+    FE sinh type TypeScript, BE sinh type Go từ đây. Đổi API → sửa file này trước.
+
+    ## Quy ước chung
+
+    **Base URL.** Trình duyệt gọi qua Nginx: mọi API nghiệp vụ nằm dưới `/api/v1`.
+    Endpoint nhóm *System* (`/healthz`, `/readyz`) chỉ dùng nội bộ (Docker, LB), không đi qua Nginx.
+
+    **Định dạng.** Request/response là JSON UTF-8, tên trường `snake_case`,
+    thời gian theo RFC 3339 có múi giờ (`2026-10-15T21:53:16.178+07:00`), ID là UUID.
+
+    **Lỗi.** Mọi lỗi (4xx, 5xx) trả cùng một dạng `ErrorResponse`. FE rẽ nhánh theo
+    `error.code` (ổn định, không đổi), không theo `message` (có thể đổi, đã dịch sẵn).
+    Lỗi kiểm tra dữ liệu (`validation_failed`) đặt lỗi từng trường trong `error.details`.
+
+    **Request ID.** Mỗi response có header `X-Request-ID` (cũng nằm trong `error.request_id`).
+    FE nên hiển thị/ghi lại giá trị này khi báo lỗi để BE tra log. FE có thể tự gửi
+    `X-Request-ID` (≤ 128 ký tự) để nối log hai phía.
+
+    **Xác thực** *(sẽ có ở M1)*: header `Authorization: Bearer <access_token>` (JWT).
+    Endpoint không yêu cầu đăng nhập ghi `security: []`.
+  contact:
+    name: Backend team
+
+servers:
+  - url: /
+    description: Cùng origin (qua Nginx hoặc trực tiếp Go server khi dev)
+
+tags:
+  - name: System
+    description: Liveness/readiness cho Docker và load balancer. Không dùng từ FE.
+  - name: Docs
+    description: Tài liệu API.
+
+security:
+  - bearerAuth: []
+
+paths:
+  /healthz:
+    get:
+      tags: [System]
+      operationId: getHealthz
+      summary: Liveness — tiến trình còn sống
+      description: Luôn 200 nếu process còn phục vụ HTTP. Không kiểm tra Postgres/Redis.
+      security: []
+      responses:
+        "200":
+          description: Còn sống
+          headers:
+            X-Request-ID: { $ref: "#/components/headers/X-Request-ID" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthStatus" }
+
+  /readyz:
+    get:
+      tags: [System]
+      operationId: getReadyz
+      summary: Readiness — sẵn sàng nhận request
+      description: |
+        Ping song song Postgres và Redis (mỗi cái tối đa 1s).
+        Trả 503 khi một phụ thuộc lỗi, hoặc khi server đang tắt (`status: shutting_down`).
+        `checks[*].error` chỉ có ở môi trường khác production.
+      security: []
+      responses:
+        "200":
+          description: Mọi phụ thuộc hoạt động
+          headers:
+            X-Request-ID: { $ref: "#/components/headers/X-Request-ID" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReadinessStatus" }
+              example:
+                status: ok
+                checks:
+                  postgres: { status: up }
+                  redis: { status: up }
+        "503":
+          description: Chưa sẵn sàng hoặc đang tắt
+          headers:
+            X-Request-ID: { $ref: "#/components/headers/X-Request-ID" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReadinessStatus" }
+              examples:
+                dependencyDown:
+                  summary: Redis lỗi
+                  value:
+                    status: unavailable
+                    checks:
+                      postgres: { status: up }
+                      redis: { status: down, error: context deadline exceeded }
+                shuttingDown:
+                  summary: Đang tắt êm
+                  value: { status: shutting_down }
+
+  /api/openapi.yaml:
+    get:
+      tags: [Docs]
+      operationId: getOpenAPISpec
+      summary: File OpenAPI này
+      security: []
+      responses:
+        "200":
+          description: Spec dạng YAML
+          content:
+            application/yaml:
+              schema: { type: string }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  headers:
+    X-Request-ID:
+      description: ID của request, dùng khi báo lỗi để tra log.
+      schema: { type: string, example: 1076c440-336d-4671-8e29-b6296d7dc007 }
+
+  responses:
+    BadRequest:
+      description: Request sai cú pháp
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Unauthorized:
+      description: Chưa đăng nhập hoặc token hết hạn
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Forbidden:
+      description: Không có quyền
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    NotFound:
+      description: Không tìm thấy
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          example:
+            error:
+              code: not_found
+              message: Không tìm thấy
+              request_id: bd3e9bf0-6f7a-4600-9eb5-c571a8038879
+    ValidationFailed:
+      description: Dữ liệu không hợp lệ
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          example:
+            error:
+              code: validation_failed
+              message: Dữ liệu không hợp lệ
+              details:
+                fields:
+                  email: Email không hợp lệ
+              request_id: 0b6f2c1e-8f3a-4d0e-9a51-2f6a1c9d7e44
+    RateLimited:
+      description: Quá nhiều yêu cầu
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    InternalError:
+      description: Lỗi hệ thống
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  schemas:
+    ErrorCode:
+      type: string
+      description: |
+        Mã lỗi ổn định. FE rẽ nhánh theo mã này.
+        | code | HTTP | Ý nghĩa |
+        |---|---|---|
+        | `bad_request` | 400 | Request sai cú pháp |
+        | `unauthorized` | 401 | Chưa đăng nhập / token hết hạn |
+        | `forbidden` | 403 | Không có quyền |
+        | `not_found` | 404 | Không tìm thấy (kể cả route không tồn tại) |
+        | `method_not_allowed` | 405 | Sai HTTP method |
+        | `conflict` | 409 | Xung đột dữ liệu (vd trùng) |
+        | `payload_too_large` | 413 | Body request vượt giới hạn |
+        | `validation_failed` | 422 | Dữ liệu không hợp lệ, xem `details` |
+        | `rate_limited` | 429 | Quá nhiều yêu cầu |
+        | `internal_error` | 500 | Lỗi hệ thống |
+        | `service_unavailable` | 503 | Dịch vụ tạm thời không sẵn sàng |
+      enum:
+        - bad_request
+        - unauthorized
+        - forbidden
+        - not_found
+        - method_not_allowed
+        - conflict
+        - payload_too_large
+        - validation_failed
+        - rate_limited
+        - internal_error
+        - service_unavailable
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { $ref: "#/components/schemas/ErrorCode" }
+            message:
+              type: string
+              description: Thông báo cho người dùng; có thể đổi, không dùng để rẽ nhánh.
+              example: Không tìm thấy
+            details:
+              type: object
+              additionalProperties: true
+              description: Thông tin thêm tùy mã lỗi (vd `fields` cho `validation_failed`).
+            request_id:
+              type: string
+              example: bd3e9bf0-6f7a-4600-9eb5-c571a8038879
+
+    HealthStatus:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [ok] }
+
+    DependencyCheck:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [up, down] }
+        error:
+          type: string
+          description: Chỉ có khi `down` và không phải production.
+
+    ReadinessStatus:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [ok, unavailable, shutting_down] }
+        checks:
+          type: object
+          description: Kết quả từng phụ thuộc (postgres, redis). Không có khi `shutting_down`.
+          additionalProperties: { $ref: "#/components/schemas/DependencyCheck" }

@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+bin/
+*.exe
+**/*_test.go
+.git
+.gitignore
+Dockerfile
+.dockerignore
